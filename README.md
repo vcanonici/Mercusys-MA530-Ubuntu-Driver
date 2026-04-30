@@ -1,109 +1,71 @@
-# Mercusys MA530 Linux Bluetooth Driver Fix
+# Mercusys MA530 Linux Bluetooth Driver
 
-Linux notes, scripts, and a `btusb` patch for the **Mercusys MA530 Bluetooth Nano USB Adapter** on Ubuntu and other Ubuntu-based distributions.
+Community Linux support for the **Mercusys MA530 Bluetooth Nano USB Adapter**.
 
-This project targets the MA530 USB ID **`2c4e:0115`**, which presents as a Realtek **RTL8761BU / RTL8761BUV** Bluetooth controller. It is useful when the adapter is detected but Bluetooth scanning, pairing, or reconnecting devices is unreliable on Linux.
+The MA530 is a small USB Bluetooth adapter sold for everyday things like keyboards, mice, headphones, and controllers. On Linux, this adapter may appear on USB but fail to behave like a reliable Bluetooth controller because its USB ID is not handled correctly by the stock driver path on some systems.
 
-## Keywords
+This repository fixes that by patching Linux `btusb` so the MA530 USB ID, **`2c4e:0115`**, is bound through the Realtek **RTL8761BU / RTL8761BUV** Bluetooth path.
 
-Mercusys MA530 Linux driver, MA530 Ubuntu Bluetooth, `2c4e:0115`, Realtek RTL8761BU Linux, RTL8761BUV, `btusb`, `btrtl`, Bluetooth keyboard Linux, Ubuntu Bluetooth dongle fix.
+## Why This Exists
 
-## Status
+Because Linux users should not have to throw away working hardware just because a vendor did not ship a driver.
 
-- Tested on Ubuntu with Linux `6.14.x`.
-- Builds an out-of-tree `btusb.ko` module.
-- Adds MA530 `2c4e:0115` to the Realtek `btusb` device table.
-- Loads Realtek firmware from `/lib/firmware/rtl_bt/rtl8761bu_fw.bin`.
-- Includes helper scripts for pairing, reconnecting, autosuspend, and diagnostics.
+If companies will not maintain Linux support for the products they sell, the community will. This repo is a practical example: understand the device, patch the driver path, document the recovery process, and share the work so the next person does not have to start from zero.
 
-This is not an official Mercusys or Realtek driver.
+## What This Software Does
 
-## What Is Included
+- Adds Mercusys MA530 `2c4e:0115` handling to Linux `btusb`.
+- Builds an out-of-tree `btusb.ko` module for your current kernel.
+- Installs the module into `/lib/modules/<kernel>/updates/`.
+- Reloads Bluetooth so Linux uses the patched driver.
+- Helps verify Realtek firmware loading.
+- Includes helpers for pairing, reconnecting, autosuspend, diagnostics, and agent-driven install/repair.
 
-- `patches/btusb-ma530.patch`: kernel `btusb` patch for MA530.
-- `scripts/build_driver.sh`: builds `btusb.ko` from a prepared source tree.
-- `scripts/install_driver.sh`: installs the module into `/lib/modules/<kernel>/updates/`.
-- `scripts/load_driver.sh`: reloads `btusb` so the patched module is used.
-- Bluetooth recovery helpers for scanning, pairing, trust/connect, keepalive, and autosuspend.
-- Notes documenting the reverse-engineering and recovery workflow.
+This is not an official Mercusys, Realtek, or Linux kernel project. It is a community driver fix and operational toolkit.
 
-## What Is Not Included
+## Who This Is For
 
-- Realtek firmware blobs. They are proprietary and should come from your system package under `/lib/firmware/rtl_bt/`.
-- A full Linux kernel source tree. This repo ships the MA530 patch and helper scripts, not a copy of upstream `btusb.c`.
-- DKMS packaging. The current workflow is explicit rebuild/install after kernel updates.
+Use this if you have a Mercusys MA530 Bluetooth adapter on Ubuntu or an Ubuntu-based Linux distribution and you see symptoms like:
 
-## Requirements
+- the adapter appears in `lsusb`, but Bluetooth is unreliable;
+- Bluetooth scanning or pairing fails;
+- a keyboard or mouse pairs once and then stops reconnecting;
+- kernel logs mention Realtek Bluetooth firmware, but the controller is unstable;
+- you want a reproducible way to rebuild the fix after kernel updates.
 
-Install the usual kernel build and Bluetooth tools:
+The target adapter is:
 
-```bash
-sudo apt update
-sudo apt install build-essential linux-headers-$(uname -r) linux-firmware bluez usbutils ripgrep patch
+```text
+USB ID: 2c4e:0115
+Chip family: Realtek RTL8761BU / RTL8761BUV
+Linux driver path: btusb + btrtl
 ```
 
-The agent installer can create an out-of-tree Bluetooth driver source directory automatically from local or installable Linux source. If you provide your own source directory, it should contain at least:
+## Quick Install
 
-- `Makefile`
-- `btusb.c`
-- `ath3k.c`
-- the Bluetooth helper headers used by `btusb.c`
-
-By default the scripts create or reuse:
-
-```bash
-/usr/src/btusb-4.3
-```
-
-You can override it, but this is optional:
-
-```bash
-export BTUSB_SRC_DIR=/path/to/btusb-source
-```
-
-## For Coding Agents
-
-This repository is agent-operable. Start with [AGENTS.md](AGENTS.md), which contains:
-
-- the MA530 hardware context (`2c4e:0115`, Realtek RTL8761BU/RTL8761BUV),
-- the single-shot install/repair command flow,
-- autonomy rules for creating missing tools/source bootstrap,
-- optional overrides such as `BTUSB_SRC_DIR`,
-- optional pairing via `TARGET_BT_MAC`,
-- success criteria and stop conditions.
-
-Autonomous agents should not begin with pairing. They should verify and repair driver integrity first.
-
-Default no-input agent invocation:
+Clone the repository, plug in the adapter, then run:
 
 ```bash
 ./scripts/agent_install.sh
 ```
 
-Optional pairing context:
+That script tries to install dependencies, prepare the driver source, apply the patch, build the module, install it, reload `btusb`, and print verification output.
+
+For a manual install path, see [docs/install.md](docs/install.md).
+
+## For Coding Agents
+
+This repo is intentionally agent-operable. If you ask a coding agent to "implement the patch", it should start from [AGENTS.md](AGENTS.md) and use:
 
 ```bash
-TARGET_BT_MAC=AA:BB:CC:DD:EE:FF ./scripts/agent_install.sh
+./scripts/agent_install.sh
 ```
 
-If the default flow fails because the host differs, the agent should extend the scripts and continue rather than asking for a source path immediately.
+The agent is allowed to improve the local automation if the host environment differs. The goal is a working MA530 driver install, not blind adherence to one exact script path.
 
-## Quick Start
+## After Kernel Updates
 
-1. Confirm the adapter is present:
-
-```bash
-lsusb | rg -i '2c4e:0115|mercusys'
-```
-
-2. Prepare the `btusb` source tree by applying the MA530 patch:
-
-```bash
-export BTUSB_SRC_DIR=/usr/src/btusb-4.3
-./scripts/prepare_source.sh
-```
-
-3. Build, install, and load the patched driver:
+Kernel updates require rebuilding the module:
 
 ```bash
 ./scripts/build_driver.sh
@@ -111,112 +73,34 @@ export BTUSB_SRC_DIR=/usr/src/btusb-4.3
 ./scripts/load_driver.sh
 ```
 
-4. Verify that Linux is using the patched module:
-
-```bash
-modinfo -n btusb
-modinfo /lib/modules/$(uname -r)/updates/btusb.ko | rg -n 'srcversion|vermagic|version'
-sudo dmesg | rg -i 'MA530|RTL|btusb'
-```
-
-Expected signs:
-
-- `modinfo -n btusb` points to `/lib/modules/<kernel>/updates/btusb.ko`
-- kernel logs include `MA530: binding RTL8761BU via btusb`
-- kernel logs include Realtek firmware loading, such as `rtl8761bu_fw.bin`
-
-## Pair A Keyboard Or Mouse
-
-Put the device in pairing mode, then:
-
-```bash
-./scripts/scan_devices.sh 20
-bluetoothctl devices
-./scripts/pair_device.sh <MAC>
-bluetoothctl info <MAC>
-```
-
-For reconnect stability:
-
-```bash
-sudo ./scripts/install_system_integration.sh <MAC>
-./scripts/disable_autosuspend.sh
-```
-
-If you cannot use `sudo` yet, install a user-session autoconnect service:
-
-```bash
-./scripts/install_user_autoconnect.sh <MAC>
-```
-
-## After A Kernel Update
-
-Rebuild the module for the new kernel:
-
-```bash
-uname -r
-./scripts/build_driver.sh
-./scripts/install_driver.sh
-./scripts/load_driver.sh
-```
-
-Then verify again:
+Then confirm:
 
 ```bash
 modinfo -n btusb
 sudo dmesg | rg -i 'MA530|RTL|btusb'
 ```
 
-## Troubleshooting Checklist
+## What Is In The Repo
 
-Driver integrity first:
+- [patches/btusb-ma530.patch](patches/btusb-ma530.patch): the MA530 `btusb` patch.
+- [scripts/](scripts/): install, build, load, pairing, recovery, and diagnostics helpers.
+- [AGENTS.md](AGENTS.md): instructions for autonomous coding agents.
+- [docs/install.md](docs/install.md): detailed install and troubleshooting guide.
+- [docs/repository.md](docs/repository.md): repo metadata, topics, and search keywords.
+- [notes/](notes/): development notes and operational runbooks.
 
-```bash
-uname -r
-modinfo -n btusb
-modinfo /lib/modules/$(uname -r)/updates/btusb.ko | rg -n 'srcversion|vermagic|version'
-lsmod | rg -n '^btusb|^btrtl|^bluetooth'
-```
+## What Is Not Included
 
-Adapter/controller state:
+This repo does not include proprietary Realtek firmware blobs or generated kernel modules. Firmware should come from your Linux distribution under `/lib/firmware/rtl_bt/`.
 
-```bash
-lsusb | rg -i '2c4e:0115|mercusys'
-hciconfig -a
-bluetoothctl show
-```
+Build outputs, logs, firmware, and local captures are intentionally ignored.
 
-Pairing state:
+## Safety
 
-```bash
-bluetoothctl devices
-bluetoothctl info <MAC>
-```
-
-BLE keyboards may rotate addresses. If reconnect services point to old MACs, disable stale service instances and bind keepalive/autoconnect to the current MAC only.
-
-## GitHub Topics
-
-Recommended repository topics:
-
-```text
-mercusys ma530 linux ubuntu bluetooth rtl8761bu rtl8761buv btusb btrtl realtek 2c4e-0115 bluetooth-keyboard
-```
-
-Suggested GitHub description:
-
-```text
-Linux btusb patch and Ubuntu helper scripts for the Mercusys MA530 Bluetooth USB adapter (2c4e:0115, Realtek RTL8761BU/RTL8761BUV).
-```
-
-## Safety Notes
-
-- Do not publish local firmware blobs from `firmware/`.
-- Do not publish Bluetooth MAC addresses from your own devices.
-- Review logs before attaching them to an issue. `btmon`, `dmesg`, and `bluetoothctl` output may include device names and addresses.
+Before sharing logs, remove Bluetooth MAC addresses, hostnames, usernames, and personal device names. See [SECURITY.md](SECURITY.md).
 
 ## License
 
 Scripts and documentation are MIT licensed.
 
-The kernel patch applies to Linux Bluetooth driver code, which is GPL-2.0-or-later upstream. Treat patched kernel module builds as GPL-derived kernel artifacts.
+The patch applies to Linux Bluetooth driver code, which is GPL-2.0-or-later upstream. Treat patched kernel module builds as GPL-derived kernel artifacts.
