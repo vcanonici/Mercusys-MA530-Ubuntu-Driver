@@ -1,118 +1,111 @@
 # Install And Operations Guide
 
-This page keeps the detailed install, verification, and troubleshooting notes for the Mercusys MA530 Linux Bluetooth driver fix.
+This guide covers installation, verification, rollback, and diagnostics for the Mercusys MA530 Linux `btusb` fix.
 
-## Status
+## 1. Prerequisites
 
-- Tested on Ubuntu with Linux `6.14.x`.
-- Builds an out-of-tree `btusb.ko` module.
-- Adds MA530 `2c4e:0115` to the Realtek `btusb` device table.
-- Loads Realtek firmware from `/lib/firmware/rtl_bt/rtl8761bu_fw.bin`.
-- Includes helper scripts for pairing, reconnecting, autosuspend, and diagnostics.
+Target hardware:
 
-This is not an official Mercusys or Realtek driver.
-
-## What Is Included
-
-- `patches/btusb-ma530.patch`: kernel `btusb` patch for MA530.
-- `scripts/agent_install.sh`: no-input install/repair entry point.
-- `scripts/bootstrap_source.sh`: prepares a minimal out-of-tree `btusb` source tree.
-- `scripts/build_driver.sh`: builds `btusb.ko` from a prepared source tree.
-- `scripts/install_driver.sh`: installs the module into `/lib/modules/<kernel>/updates/`.
-- `scripts/load_driver.sh`: reloads `btusb` so the patched module is used.
-- Bluetooth recovery helpers for scanning, pairing, trust/connect, keepalive, and autosuspend.
-- Notes documenting the reverse-engineering and recovery workflow.
-
-## What Is Not Included
-
-- Realtek firmware blobs. They are proprietary and should come from your system package under `/lib/firmware/rtl_bt/`.
-- A full Linux kernel source tree. This repo ships the MA530 patch and helper scripts, not a copy of upstream `btusb.c`.
-- DKMS packaging. The current workflow is explicit rebuild/install after kernel updates.
-
-## Requirements
-
-Install the usual kernel build and Bluetooth tools:
-
-```bash
-sudo apt update
-sudo apt install build-essential linux-headers-$(uname -r) linux-firmware bluez usbutils ripgrep patch
+```text
+Mercusys MA530 Bluetooth Nano USB Adapter
+USB ID: 2c4e:0115
+Realtek family: RTL8761BU / RTL8761BUV
 ```
 
-The agent installer can create an out-of-tree Bluetooth driver source directory automatically from local or installable Linux source. If you provide your own source directory, it should contain at least:
-
-- `Makefile`
-- `btusb.c`
-- `ath3k.c`
-- the Bluetooth helper headers used by `btusb.c`
-
-By default the scripts create or reuse:
+Install dependencies on Ubuntu or Debian-based systems:
 
 ```bash
-/usr/src/btusb-4.3
+sudo apt-get update
+sudo apt-get install -y build-essential linux-headers-$(uname -r) bluez usbutils ripgrep patch
 ```
 
-You can override it, but this is optional:
+For DKMS:
 
 ```bash
-export BTUSB_SRC_DIR=/path/to/btusb-source
+sudo apt-get install -y dkms
 ```
 
-## Agent Install
+Firmware should come from the distribution:
 
-For coding agents, start with [../AGENTS.md](../AGENTS.md). The default no-input command is:
+```text
+/lib/firmware/rtl_bt/rtl8761bu_fw.bin
+/lib/firmware/rtl_bt/rtl8761bu_config.bin
+```
+
+If firmware is missing, install or repair your distribution firmware package explicitly:
 
 ```bash
-./scripts/agent_install.sh
+sudo apt-get install -y linux-firmware
 ```
 
-Optional pairing context:
+`scripts/bootstrap_source.sh` can install `linux-source` only when it cannot find a usable local Bluetooth source tree.
+
+## 2. DKMS Installation
+
+DKMS is recommended when available because it can rebuild the patched module after kernel updates:
 
 ```bash
-TARGET_BT_MAC=AA:BB:CC:DD:EE:FF ./scripts/agent_install.sh
+MA530_USE_DKMS=1 ./scripts/agent_install.sh
 ```
 
-If the default flow fails because the host differs, the agent should extend the scripts and continue rather than asking for a source path immediately.
-
-## Manual Install
-
-1. Confirm the adapter is present:
+Direct DKMS commands:
 
 ```bash
-lsusb | rg -i '2c4e:0115|mercusys'
+./scripts/dkms_install.sh
+dkms status | rg ma530-btusb
+./scripts/verify_driver.sh
 ```
 
-2. Prepare the `btusb` source tree by applying the MA530 patch:
+Generated DKMS source is placed under:
+
+```text
+/usr/src/ma530-btusb-0.1.0/
+```
+
+## 3. Manual Installation
 
 ```bash
-export BTUSB_SRC_DIR=/usr/src/btusb-4.3
-./scripts/prepare_source.sh
+export KVER="$(uname -r)"
+export BTUSB_SRC_DIR="${BTUSB_SRC_DIR:-/usr/src/btusb-4.3}"
+
+./scripts/bootstrap_source.sh "${BTUSB_SRC_DIR}"
+./scripts/prepare_source.sh "${BTUSB_SRC_DIR}"
+./scripts/build_driver.sh "${KVER}"
+./scripts/install_driver.sh "${KVER}"
+./scripts/load_driver.sh "${KVER}"
 ```
 
-3. Build, install, and load the patched driver:
+[patches/btusb-ma530-minimal.patch](../patches/btusb-ma530-minimal.patch) only adds the MA530 USB ID to the Realtek `btusb` table. [patches/btusb-ma530.patch](../patches/btusb-ma530.patch) is kept as a compatibility fallback for source trees that need the older broader patch.
+
+## 4. Verification
 
 ```bash
-./scripts/build_driver.sh
-./scripts/install_driver.sh
-./scripts/load_driver.sh
+./scripts/verify_driver.sh
+echo $?
 ```
 
-4. Verify that Linux is using the patched module:
+Return codes:
+
+```text
+0 = driver active and coherent
+1 = module missing or kernel mismatch
+2 = MA530 hardware absent
+3 = module present, but Bluetooth controller absent
+```
+
+Useful manual checks:
 
 ```bash
 modinfo -n btusb
 modinfo /lib/modules/$(uname -r)/updates/btusb.ko | rg -n 'srcversion|vermagic|version'
-sudo dmesg | rg -i 'MA530|RTL|btusb'
+lsmod | rg -n '^btusb|^btrtl|^bluetooth'
+sudo dmesg | rg -i 'MA530|RTL|btusb|rtl8761bu' | tail -n 120
+bluetoothctl show
 ```
 
-Expected signs:
+## 5. Optional Pairing
 
-- `modinfo -n btusb` points to `/lib/modules/<kernel>/updates/btusb.ko`
-- kernel logs include `MA530: binding RTL8761BU via btusb`
-- kernel logs include Realtek firmware loading, such as `rtl8761bu_fw.bin`
-
-## Pair A Keyboard Or Mouse
-
-Put the device in pairing mode, then:
+Do not pair before driver and controller verification pass.
 
 ```bash
 ./scripts/scan_devices.sh 20
@@ -121,67 +114,76 @@ bluetoothctl devices
 bluetoothctl info <MAC>
 ```
 
-For reconnect stability:
+Optional reconnect support:
 
 ```bash
 sudo ./scripts/install_system_integration.sh <MAC>
 ./scripts/disable_autosuspend.sh
 ```
 
-If you cannot use `sudo` yet, install a user-session autoconnect service:
+## 6. Rebuild After Kernel Update
+
+With DKMS:
 
 ```bash
-./scripts/install_user_autoconnect.sh <MAC>
+sudo dkms autoinstall
+./scripts/verify_driver.sh
 ```
 
-## After A Kernel Update
-
-Rebuild the module for the new kernel:
+Manual rebuild:
 
 ```bash
-uname -r
-./scripts/build_driver.sh
-./scripts/install_driver.sh
-./scripts/load_driver.sh
+export KVER="$(uname -r)"
+./scripts/bootstrap_source.sh "${BTUSB_SRC_DIR:-/usr/src/btusb-4.3}"
+./scripts/prepare_source.sh "${BTUSB_SRC_DIR:-/usr/src/btusb-4.3}"
+./scripts/build_driver.sh "${KVER}"
+./scripts/install_driver.sh "${KVER}"
+./scripts/load_driver.sh "${KVER}"
+./scripts/verify_driver.sh
 ```
 
-Then verify again:
+## 7. Rollback
+
+Manual module rollback:
 
 ```bash
-modinfo -n btusb
-sudo dmesg | rg -i 'MA530|RTL|btusb'
+./scripts/uninstall_driver.sh
+modinfo -n btusb || true
 ```
 
-## Troubleshooting Checklist
-
-Driver integrity first:
+DKMS rollback:
 
 ```bash
-uname -r
-modinfo -n btusb
-modinfo /lib/modules/$(uname -r)/updates/btusb.ko | rg -n 'srcversion|vermagic|version'
-lsmod | rg -n '^btusb|^btrtl|^bluetooth'
+./scripts/dkms_remove.sh
+sudo depmod -a
+sudo modprobe -r btusb || true
+sudo modprobe btusb || true
+modinfo -n btusb || true
 ```
 
-Adapter/controller state:
+Rollback does not remove firmware, Bluetooth packages, Bluetooth configuration, or `/var/lib/bluetooth/`.
+
+## 8. Secure Boot
+
+The installer checks Secure Boot state when `mokutil` is present:
 
 ```bash
-lsusb | rg -i '2c4e:0115|mercusys'
-hciconfig -a
-bluetoothctl show
+mokutil --sb-state
 ```
 
-Pairing state:
+If Secure Boot is enabled, unsigned modules may fail to load. Diagnose with:
 
 ```bash
-bluetoothctl devices
-bluetoothctl info <MAC>
+sudo dmesg | rg -i 'module verification|signature|key rejected|Required key not available'
 ```
 
-BLE keyboards may rotate addresses. If reconnect services point to old MACs, disable stale service instances and bind keepalive/autoconnect to the current MAC only.
+This repository does not generate or enroll MOK keys automatically. See [secure-boot.md](secure-boot.md).
 
-## Safety Notes
+## 9. Diagnostics
 
-- Do not publish local firmware blobs from `firmware/`.
-- Do not publish Bluetooth MAC addresses from your own devices.
-- Review logs before attaching them to an issue. `btmon`, `dmesg`, and `bluetoothctl` output may include device names and addresses.
+```bash
+./scripts/collect_diagnostics.sh
+ls logs/
+```
+
+The diagnostics file is sanitized in place. It masks Bluetooth MAC addresses, `/home/<user>` paths, local hostnames, and serial numbers before you attach it to an issue.

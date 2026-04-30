@@ -13,6 +13,7 @@ modules.order
 /logs/
 /driver/build/
 /firmware/
+/tests/
 *.btsnoop
 *.log
 

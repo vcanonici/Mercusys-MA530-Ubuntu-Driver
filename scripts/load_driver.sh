@@ -7,6 +7,7 @@ if [[ "${EUID}" -ne 0 ]]; then
   sudo_cmd=(sudo)
 fi
 
+echo "Target kernel: ${KVER}"
 echo "Unloading btusb..."
 "${sudo_cmd[@]}" modprobe -r btusb || true
 

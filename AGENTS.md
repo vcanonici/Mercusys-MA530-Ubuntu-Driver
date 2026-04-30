@@ -57,9 +57,14 @@ If that script fails because an environment is different, repair or extend the a
 ## Repository Map
 
 - `patches/btusb-ma530.patch`: patch that adds MA530 `2c4e:0115` to `btusb` Realtek handling.
+- `patches/btusb-ma530-minimal.patch`: preferred minimal patch; it only adds the MA530 USB ID to the Realtek `btusb` table.
 - `scripts/prepare_source.sh`: validates a prepared out-of-tree `btusb` source tree and applies the patch.
 - `scripts/bootstrap_source.sh`: creates a minimal out-of-tree `btusb` source tree from local or installable Linux source when needed.
 - `scripts/agent_install.sh`: no-input install/repair entry point for coding agents.
+- `scripts/verify_driver.sh`: central driver/controller verification script with stable return codes.
+- `scripts/uninstall_driver.sh`: removes only installed `/updates` modules and reloads stock `btusb` when possible.
+- `scripts/dkms_prepare.sh`, `scripts/dkms_install.sh`, `scripts/dkms_remove.sh`: optional DKMS workflow.
+- `scripts/collect_diagnostics.sh`: collects and sanitizes issue diagnostics.
 - `scripts/build_driver.sh`: builds `btusb.ko` for the current or specified kernel.
 - `scripts/install_driver.sh`: installs the built module to `/lib/modules/<kver>/updates/`.
 - `scripts/load_driver.sh`: reloads `btusb` so Linux uses the installed module.
@@ -79,6 +84,7 @@ No input is required for the default driver install path. Agents may receive opt
 - `BTUSB_SRC_DIR`: override for the out-of-tree `btusb` source directory. Default: `/usr/src/btusb-4.3`.
 - `TARGET_BT_MAC`: optional Bluetooth MAC to pair/connect/trust after driver install.
 - `KVER`: optional target kernel version. Default: `$(uname -r)`.
+- `MA530_USE_DKMS`: set to `1` to use DKMS through `scripts/agent_install.sh`; set to `0` for the manual `/updates` flow.
 
 If `BTUSB_SRC_DIR` is missing, the agent should create it. Start with `scripts/bootstrap_source.sh`; if that is insufficient, extend the script. Viable source strategies include:
 
@@ -114,26 +120,23 @@ lsusb | rg -i '2c4e:0115|mercusys' || {
 
 echo "== Dependencies =="
 sudo apt update
-sudo apt install -y build-essential "linux-headers-${KVER}" linux-firmware linux-source bluez usbutils ripgrep patch
+sudo apt install -y --no-upgrade build-essential "linux-headers-${KVER}" bluez usbutils ripgrep patch
 
 echo "== Source =="
 ./scripts/bootstrap_source.sh "${BTUSB_SRC_DIR}"
 ./scripts/prepare_source.sh "${BTUSB_SRC_DIR}"
 
 echo "== Build/install/load =="
-./scripts/build_driver.sh "${KVER}"
-./scripts/install_driver.sh "${KVER}"
-./scripts/load_driver.sh "${KVER}"
+if [[ "${MA530_USE_DKMS:-0}" == "1" ]]; then
+  ./scripts/dkms_install.sh
+else
+  ./scripts/build_driver.sh "${KVER}"
+  ./scripts/install_driver.sh "${KVER}"
+  ./scripts/load_driver.sh "${KVER}"
+fi
 
 echo "== Verify driver =="
-modinfo -n btusb
-modinfo "/lib/modules/${KVER}/updates/btusb.ko" | rg -n 'srcversion|vermagic|version'
-lsmod | rg -n '^btusb|^btrtl|^bluetooth'
-sudo dmesg | rg -i 'MA530|RTL|btusb' | tail -n 80
-
-echo "== Verify controller =="
-hciconfig -a || true
-bluetoothctl show
+./scripts/verify_driver.sh "${KVER}"
 
 echo "== Optional pairing =="
 if [[ -n "${TARGET_BT_MAC:-}" ]]; then
@@ -153,7 +156,8 @@ An install/repair is successful when all of these are true:
 - `modinfo -n btusb` resolves to `/lib/modules/<kver>/updates/btusb.ko`.
 - `modinfo /lib/modules/<kver>/updates/btusb.ko` has `vermagic` matching the target kernel.
 - `lsmod` shows `btusb`, `btrtl`, and `bluetooth`.
-- `dmesg` contains the MA530 marker: `MA530: binding RTL8761BU via btusb`.
+- `scripts/verify_driver.sh` exits with `0`.
+- If the compatibility patch was used, `dmesg` may contain the MA530 marker: `MA530: binding RTL8761BU via btusb`.
 - `dmesg` contains Realtek firmware loading, usually `rtl8761bu_fw.bin`.
 - `bluetoothctl show` reports a controller.
 
@@ -172,6 +176,7 @@ uname -r
 modinfo -n btusb || true
 modinfo /lib/modules/$(uname -r)/updates/btusb.ko | rg -n 'srcversion|vermagic|version' || true
 lsmod | rg -n '^btusb|^btrtl|^bluetooth' || true
+./scripts/verify_driver.sh || true
 ```
 
 If the custom module is missing or built for a different kernel, rebuild/install/load before pairing.
@@ -234,6 +239,9 @@ Before asking the human, try to recover:
 - If `make` fails, read the compiler error and adapt the minimal out-of-tree source for the running kernel headers.
 - If `modinfo -n btusb` does not point to `/updates/`, inspect `depmod`, module priority, and install location before asking for help.
 - If `bluetoothctl show` reports no controller, check `dmesg`, `rfkill`, `systemctl status bluetooth`, and whether the adapter is physically present.
+- Prefer DKMS when available by using `MA530_USE_DKMS=1 ./scripts/agent_install.sh`; use the manual flow when DKMS is unavailable or actively being debugged.
+- Always run `scripts/verify_driver.sh` after installing or changing the module, and do not run pairing/autoconnect actions until driver and controller checks are complete.
+- Use `scripts/collect_diagnostics.sh` for issue reports and do not publish logs before sanitization.
 
 Only stop for a human when progress requires physical action, credentials, unavailable network/package access, or a policy-sensitive operation.
 
