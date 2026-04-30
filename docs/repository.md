@@ -21,3 +21,9 @@ Linux btusb patch and Ubuntu helper scripts for the Mercusys MA530 Bluetooth USB
 ## Search-Friendly Summary
 
 This repository provides a community Linux workaround for the Mercusys MA530 Bluetooth USB adapter. It patches Linux `btusb` so the MA530 USB ID `2c4e:0115` is handled through the Realtek RTL8761BU / RTL8761BUV path, then provides scripts to build, install, load, verify, and maintain that patched module on Ubuntu-based systems.
+
+## Vendor Support Context
+
+The official Mercusys MA530 product page lists Windows 11/10/8.1/7 as supported operating systems. Mercusys does not list Linux support for MA530 in its compatibility table, and its compatibility FAQ says Mercusys adapters do not support macOS.
+
+See [vendor-support.md](vendor-support.md).

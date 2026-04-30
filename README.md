@@ -6,6 +6,14 @@ The MA530 is a small USB Bluetooth adapter sold for everyday things like keyboar
 
 This repository fixes that by patching Linux `btusb` so the MA530 USB ID, **`2c4e:0115`**, is bound through the Realtek **RTL8761BU / RTL8761BUV** Bluetooth path.
 
+## Vendor Support Status
+
+Mercusys sells the MA530 with official Windows support. The official MA530 product page lists **Windows 11/10/8.1/7** as supported operating systems.
+
+Mercusys does **not** list Linux as supported for this adapter. In the Mercusys operating-system compatibility table, MA530 is marked as unsupported on Linux. The same FAQ says Mercusys adapters do not support macOS.
+
+That gap is exactly why this repository exists.
+
 ## Why This Exists
 
 Because Linux users should not have to throw away working hardware just because a vendor did not ship a driver.
@@ -87,6 +95,7 @@ sudo dmesg | rg -i 'MA530|RTL|btusb'
 - [AGENTS.md](AGENTS.md): instructions for autonomous coding agents.
 - [docs/install.md](docs/install.md): detailed install and troubleshooting guide.
 - [docs/repository.md](docs/repository.md): repo metadata, topics, and search keywords.
+- [docs/vendor-support.md](docs/vendor-support.md): official support references and context.
 - [notes/](notes/): development notes and operational runbooks.
 
 ## What Is Not Included
