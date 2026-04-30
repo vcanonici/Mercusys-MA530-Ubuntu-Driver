@@ -61,6 +61,28 @@ You can override it:
 export BTUSB_SRC_DIR=/path/to/btusb-source
 ```
 
+## For Coding Agents
+
+This repository is agent-operable. Start with [AGENTS.md](AGENTS.md), which contains:
+
+- the MA530 hardware context (`2c4e:0115`, Realtek RTL8761BU/RTL8761BUV),
+- the single-shot install/repair command flow,
+- required inputs such as `BTUSB_SRC_DIR`,
+- optional pairing via `TARGET_BT_MAC`,
+- success criteria and stop conditions.
+
+Autonomous agents should not begin with pairing. They should verify and repair driver integrity first.
+
+Minimal agent invocation context:
+
+```bash
+export BTUSB_SRC_DIR=/usr/src/btusb-4.3
+# optional:
+export TARGET_BT_MAC=AA:BB:CC:DD:EE:FF
+```
+
+Then follow the **Single-Shot Install Flow** in `AGENTS.md`.
+
 ## Quick Start
 
 1. Confirm the adapter is present:

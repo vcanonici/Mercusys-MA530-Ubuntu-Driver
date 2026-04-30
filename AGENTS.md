@@ -1,66 +1,213 @@
-# AGENTS.md (Public)
+# AGENTS.md
 
-This repository contains tooling and notes for maintaining a Mercusys MA530 Bluetooth adapter on Ubuntu Linux.
+This repository is designed to be operated by coding agents as well as humans.
+
+It contains a Linux `btusb` patch and operational scripts for the **Mercusys MA530 Bluetooth Nano USB Adapter**:
+
+- USB ID: `2c4e:0115`
+- Chip family: Realtek `RTL8761BU` / `RTL8761BUV`
+- Linux path: `btusb` + `btrtl`
+- Primary target: Ubuntu or Ubuntu-based Linux
 
 ## Mission
-Keep Bluetooth keyboard connectivity stable by prioritizing driver integrity, then pairing/connectivity maintenance.
 
-## Public Safe Guidelines
-- Do not store passwords, tokens, or private credentials.
-- Do not publish personally identifying machine details.
-- Keep troubleshooting reproducible with command-based checks.
+Install or repair MA530 Bluetooth support by prioritizing:
 
-## First Response Checklist (Always)
-Before any pairing actions, verify driver integrity:
-1. `uname -r`
-2. `modinfo -n btusb`
-3. `modinfo /lib/modules/$(uname -r)/updates/btusb.ko | rg -n 'srcversion|vermagic|version'`
-4. `lsmod | rg -n '^btusb|^btrtl|^bluetooth'`
+1. Driver integrity
+2. Adapter/controller health
+3. Pairing/connectivity state
+4. Autoconnect/keepalive consistency
 
-If custom `btusb` is missing for current kernel, rebuild and reinstall:
-1. `./scripts/build_driver.sh`
-2. `./scripts/install_driver.sh`
-3. `./scripts/load_driver.sh`
+Do not start with pairing actions until driver integrity has been checked.
 
-## Keyboard Recovery Flow
-1. Confirm adapter/controller is healthy:
-- `lsusb | rg -i '2c4e:0115|mercusys'`
-- `hciconfig -a`
-- `bluetoothctl show`
+## Safety Rules
 
-2. Discover current keyboard address (BLE addresses may rotate):
-- put keyboard in pairing mode
-- `./scripts/scan_devices.sh 20`
-- `bluetoothctl devices`
-
-3. Pair/connect/trust:
-- `./scripts/pair_device.sh <MAC>`
-- `bluetoothctl info <MAC>`
-
-4. Keepalive (optional, one device only):
-- `sudo systemctl enable --now bt-keepalive@<MAC>.service`
-- disable stale services bound to old MACs.
+- Do not store passwords, tokens, private keys, or credentials.
+- Do not publish real Bluetooth MAC addresses, hostnames, serial numbers, or user-specific machine details.
+- Do not commit `firmware/`, `driver/build/`, `logs/`, `.ko`, `.btsnoop`, or generated logs.
+- Do not delete Bluetooth pairing databases unless explicitly asked.
+- Do not run destructive Git commands.
+- Use command output and reproducible checks as the source of truth.
 
 ## Repository Map
-- `scripts/`:
-  - Driver lifecycle: `build_driver.sh`, `install_driver.sh`, `load_driver.sh`, `driver_status.sh`
-  - Bluetooth ops: `scan_devices.sh`, `pair_device.sh`, `keyboard_info.sh`, `keep_bt_connected.sh`
-  - System integration: `install_system_integration.sh`, `disable_autosuspend.sh`
-  - Firmware/RE helpers: `parse_rtl_fw.py`, `extract_patch.py`, `decode_config.py`, `capture_btmon.sh`
-- `patches/`: `btusb-ma530.patch`
-- `notes/`: runbooks and operational notes
-- `driver/`: build outputs by kernel version
-- `firmware/`: local blobs for testing (proprietary; do not redistribute blindly)
 
-## Useful Versions (Example)
-- Kernel: `6.17.0-14-generic`
-- BlueZ: `5.72`
-- btusb custom srcversion example: `76EBEFCEF830922FEEF6470`
+- `patches/btusb-ma530.patch`: patch that adds MA530 `2c4e:0115` to `btusb` Realtek handling.
+- `scripts/prepare_source.sh`: validates a prepared out-of-tree `btusb` source tree and applies the patch.
+- `scripts/build_driver.sh`: builds `btusb.ko` for the current or specified kernel.
+- `scripts/install_driver.sh`: installs the built module to `/lib/modules/<kver>/updates/`.
+- `scripts/load_driver.sh`: reloads `btusb` so Linux uses the installed module.
+- `scripts/driver_status.sh`: prints active `btusb` module status.
+- `scripts/scan_devices.sh`: scans for Bluetooth devices.
+- `scripts/pair_device.sh`: pairs, trusts, and connects a Bluetooth device.
+- `scripts/install_system_integration.sh`: installs system autoconnect and MA530 autosuspend rules.
+- `scripts/install_user_autoconnect.sh`: installs user-session autoconnect.
+- `scripts/disable_autosuspend.sh`: disables USB autosuspend for MA530.
+- `scripts/keep_bt_connected.sh`: loop used by keepalive services.
+- `notes/`: background runbooks and investigation notes.
 
-Update this section when environment changes.
+## Agent Inputs
 
-## Troubleshooting Priority
-1. Driver integrity
-2. Adapter power/state
-3. Pairing database and current BLE MAC
-4. Autoconnect/keepalive service consistency
+Agents may receive these optional environment variables:
+
+- `BTUSB_SRC_DIR`: prepared out-of-tree `btusb` source directory. Default: `/usr/src/btusb-4.3`.
+- `TARGET_BT_MAC`: optional Bluetooth MAC to pair/connect/trust after driver install.
+- `KVER`: optional target kernel version. Default: `$(uname -r)`.
+
+If `BTUSB_SRC_DIR` is missing or does not contain `Makefile`, `btusb.c`, and `ath3k.c`, stop and report a blocker. This repository does not include a full Linux kernel source tree.
+
+## Single-Shot Install Flow
+
+Use this flow for an autonomous install/repair pass.
+
+```bash
+set -euo pipefail
+
+export KVER="${KVER:-$(uname -r)}"
+export BTUSB_SRC_DIR="${BTUSB_SRC_DIR:-/usr/src/btusb-4.3}"
+
+echo "== Environment =="
+uname -r
+lsusb | rg -i '2c4e:0115|mercusys' || {
+  echo "MA530 adapter not found as 2c4e:0115. Stop and ask user to plug it in."
+  exit 2
+}
+
+echo "== Dependencies =="
+sudo apt update
+sudo apt install -y build-essential "linux-headers-${KVER}" linux-firmware bluez usbutils ripgrep patch
+
+echo "== Source =="
+test -d "${BTUSB_SRC_DIR}" || {
+  echo "Missing BTUSB_SRC_DIR=${BTUSB_SRC_DIR}. Provide a prepared out-of-tree btusb source tree."
+  exit 3
+}
+./scripts/prepare_source.sh "${BTUSB_SRC_DIR}"
+
+echo "== Build/install/load =="
+./scripts/build_driver.sh "${KVER}"
+./scripts/install_driver.sh "${KVER}"
+./scripts/load_driver.sh "${KVER}"
+
+echo "== Verify driver =="
+modinfo -n btusb
+modinfo "/lib/modules/${KVER}/updates/btusb.ko" | rg -n 'srcversion|vermagic|version'
+lsmod | rg -n '^btusb|^btrtl|^bluetooth'
+sudo dmesg | rg -i 'MA530|RTL|btusb' | tail -n 80
+
+echo "== Verify controller =="
+hciconfig -a || true
+bluetoothctl show
+
+echo "== Optional pairing =="
+if [[ -n "${TARGET_BT_MAC:-}" ]]; then
+  ./scripts/pair_device.sh "${TARGET_BT_MAC}"
+  bluetoothctl info "${TARGET_BT_MAC}"
+  sudo ./scripts/install_system_integration.sh "${TARGET_BT_MAC}"
+  ./scripts/disable_autosuspend.sh
+else
+  echo "TARGET_BT_MAC not set; driver install complete without pairing."
+fi
+```
+
+## Success Criteria
+
+An install/repair is successful when all of these are true:
+
+- `modinfo -n btusb` resolves to `/lib/modules/<kver>/updates/btusb.ko`.
+- `modinfo /lib/modules/<kver>/updates/btusb.ko` has `vermagic` matching the target kernel.
+- `lsmod` shows `btusb`, `btrtl`, and `bluetooth`.
+- `dmesg` contains the MA530 marker: `MA530: binding RTL8761BU via btusb`.
+- `dmesg` contains Realtek firmware loading, usually `rtl8761bu_fw.bin`.
+- `bluetoothctl show` reports a controller.
+
+If `TARGET_BT_MAC` was provided, also verify:
+
+- `bluetoothctl info <MAC>` shows `Trusted: yes`.
+- `Connected: yes` is preferred, but transient `Connected: no` can happen if the device is asleep.
+- Only one keepalive/autoconnect service should target the current MAC for the same keyboard.
+
+## First Response Checklist
+
+Before changing pairing or service state, run:
+
+```bash
+uname -r
+modinfo -n btusb || true
+modinfo /lib/modules/$(uname -r)/updates/btusb.ko | rg -n 'srcversion|vermagic|version' || true
+lsmod | rg -n '^btusb|^btrtl|^bluetooth' || true
+```
+
+If the custom module is missing or built for a different kernel, rebuild/install/load before pairing.
+
+## Keyboard Recovery Flow
+
+1. Confirm adapter/controller:
+
+```bash
+lsusb | rg -i '2c4e:0115|mercusys'
+hciconfig -a
+bluetoothctl show
+```
+
+2. Discover the current keyboard address:
+
+```bash
+./scripts/scan_devices.sh 20
+bluetoothctl devices
+```
+
+3. Pair/connect/trust:
+
+```bash
+./scripts/pair_device.sh <MAC>
+bluetoothctl info <MAC>
+```
+
+4. Install reconnect support:
+
+```bash
+sudo ./scripts/install_system_integration.sh <MAC>
+./scripts/disable_autosuspend.sh
+```
+
+BLE keyboards may rotate addresses. Disable stale services bound to old MACs.
+
+## Rebuild After Kernel Update
+
+```bash
+export KVER="$(uname -r)"
+export BTUSB_SRC_DIR="${BTUSB_SRC_DIR:-/usr/src/btusb-4.3}"
+./scripts/prepare_source.sh "${BTUSB_SRC_DIR}"
+./scripts/build_driver.sh "${KVER}"
+./scripts/install_driver.sh "${KVER}"
+./scripts/load_driver.sh "${KVER}"
+modinfo -n btusb
+sudo dmesg | rg -i 'MA530|RTL|btusb' | tail -n 80
+```
+
+## Stop Conditions
+
+Stop and report a concise blocker if:
+
+- The MA530 adapter is not visible as `2c4e:0115`.
+- `BTUSB_SRC_DIR` is missing or incomplete.
+- Kernel headers for `$(uname -r)` cannot be installed.
+- `make` fails to build `btusb.ko`.
+- `modprobe btusb` succeeds but `modinfo -n btusb` does not point to `/updates/`.
+- `bluetoothctl show` reports no controller after the driver is loaded.
+
+## Good Issue Data
+
+When preparing an issue, collect sanitized output:
+
+```bash
+uname -r
+lsusb | rg -i '2c4e:0115|mercusys'
+modinfo -n btusb
+modinfo /lib/modules/$(uname -r)/updates/btusb.ko | rg -n 'srcversion|vermagic|version'
+lsmod | rg -n '^btusb|^btrtl|^bluetooth'
+sudo dmesg | rg -i 'MA530|RTL|btusb' | tail -n 120
+bluetoothctl show
+```
+
+Remove Bluetooth MAC addresses and personal device names before posting.
