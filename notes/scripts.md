@@ -59,6 +59,14 @@
   - Prints detailed info for connected keyboards (Icon: input-keyboard).
 
 ## Driver build/install
+- `scripts/agent_install.sh`
+  - No-input install/repair entry point for coding agents.
+  - Installs dependencies, bootstraps source when needed, applies the patch, builds, installs, loads, and verifies.
+
+- `scripts/bootstrap_source.sh [dest-dir]`
+  - Creates a minimal out-of-tree `btusb` source tree from local or installable Linux source.
+  - Defaults to `${BTUSB_SRC_DIR:-/usr/src/btusb-4.3}`.
+
 - `scripts/prepare_source.sh [source-dir]`
   - Validates an out-of-tree `btusb` source directory and applies `patches/btusb-ma530.patch`.
   - Defaults to `${BTUSB_SRC_DIR:-/usr/src/btusb-4.3}`.

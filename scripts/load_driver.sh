@@ -2,17 +2,21 @@
 set -euo pipefail
 
 KVER="${1:-$(uname -r)}"
+sudo_cmd=()
+if [[ "${EUID}" -ne 0 ]]; then
+  sudo_cmd=(sudo)
+fi
 
 echo "Unloading btusb..."
-sudo modprobe -r btusb || true
+"${sudo_cmd[@]}" modprobe -r btusb || true
 
 # Ensure dependencies are available
-sudo modprobe btrtl || true
-sudo modprobe btbcm || true
-sudo modprobe btintel || true
-sudo modprobe btmtk || true
+"${sudo_cmd[@]}" modprobe btrtl || true
+"${sudo_cmd[@]}" modprobe btbcm || true
+"${sudo_cmd[@]}" modprobe btintel || true
+"${sudo_cmd[@]}" modprobe btmtk || true
 
 # Load btusb (should pick /updates if installed)
-sudo modprobe btusb
+"${sudo_cmd[@]}" modprobe btusb
 
 modinfo -n btusb

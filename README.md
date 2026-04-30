@@ -42,20 +42,20 @@ sudo apt update
 sudo apt install build-essential linux-headers-$(uname -r) linux-firmware bluez usbutils ripgrep patch
 ```
 
-You also need an out-of-tree Bluetooth driver source directory containing at least:
+The agent installer can create an out-of-tree Bluetooth driver source directory automatically from local or installable Linux source. If you provide your own source directory, it should contain at least:
 
 - `Makefile`
 - `btusb.c`
 - `ath3k.c`
 - the Bluetooth helper headers used by `btusb.c`
 
-By default the scripts expect this directory at:
+By default the scripts create or reuse:
 
 ```bash
 /usr/src/btusb-4.3
 ```
 
-You can override it:
+You can override it, but this is optional:
 
 ```bash
 export BTUSB_SRC_DIR=/path/to/btusb-source
@@ -67,21 +67,26 @@ This repository is agent-operable. Start with [AGENTS.md](AGENTS.md), which cont
 
 - the MA530 hardware context (`2c4e:0115`, Realtek RTL8761BU/RTL8761BUV),
 - the single-shot install/repair command flow,
-- required inputs such as `BTUSB_SRC_DIR`,
+- autonomy rules for creating missing tools/source bootstrap,
+- optional overrides such as `BTUSB_SRC_DIR`,
 - optional pairing via `TARGET_BT_MAC`,
 - success criteria and stop conditions.
 
 Autonomous agents should not begin with pairing. They should verify and repair driver integrity first.
 
-Minimal agent invocation context:
+Default no-input agent invocation:
 
 ```bash
-export BTUSB_SRC_DIR=/usr/src/btusb-4.3
-# optional:
-export TARGET_BT_MAC=AA:BB:CC:DD:EE:FF
+./scripts/agent_install.sh
 ```
 
-Then follow the **Single-Shot Install Flow** in `AGENTS.md`.
+Optional pairing context:
+
+```bash
+TARGET_BT_MAC=AA:BB:CC:DD:EE:FF ./scripts/agent_install.sh
+```
+
+If the default flow fails because the host differs, the agent should extend the scripts and continue rather than asking for a source path immediately.
 
 ## Quick Start
 
