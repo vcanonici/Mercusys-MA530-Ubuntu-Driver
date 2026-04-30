@@ -2,111 +2,99 @@
 
 Community Linux support for the **Mercusys MA530 Bluetooth Nano USB Adapter**.
 
-The MA530 is a small USB Bluetooth adapter sold for everyday things like keyboards, mice, headphones, and controllers. On Linux, this adapter may appear on USB but fail to behave like a reliable Bluetooth controller because its USB ID is not handled correctly by the stock driver path on some systems.
+Some Linux systems see the adapter on USB but do not bind it through the correct Realtek Bluetooth path. This repository provides a small `btusb` fix for the MA530 USB ID, **`2c4e:0115`**, so the adapter is handled as a Realtek **RTL8761BU / RTL8761BUV** controller through `btusb` + `btrtl`.
 
-This repository fixes that by patching Linux `btusb` so the MA530 USB ID, **`2c4e:0115`**, is bound through the Realtek **RTL8761BU / RTL8761BUV** Bluetooth path.
+This is not an official Mercusys, Realtek, or Linux kernel project.
 
 ## Vendor Support Status
 
-Mercusys sells the MA530 with official Windows support. The official MA530 product page lists **Windows 11/10/8.1/7** as supported operating systems.
+Mercusys sells the MA530 with official Windows support but does not list Linux as supported for this adapter. This repository exists to provide a community-maintained Linux driver workflow for hardware that otherwise works.
 
-Mercusys does **not** list Linux as supported for this adapter. In the Mercusys operating-system compatibility table, MA530 is marked as unsupported on Linux. The same FAQ says Mercusys adapters do not support macOS.
-
-That gap is exactly why this repository exists.
-
-## Why This Exists
-
-Because Linux users should not have to throw away working hardware just because a vendor did not ship a driver.
-
-If companies will not maintain Linux support for the products they sell, the community will. This repo is a practical example: understand the device, patch the driver path, document the recovery process, and share the work so the next person does not have to start from zero.
-
-## What This Software Does
-
-- Adds Mercusys MA530 `2c4e:0115` handling to Linux `btusb`.
-- Builds an out-of-tree `btusb.ko` module for your current kernel.
-- Installs the module into `/lib/modules/<kernel>/updates/`.
-- Reloads Bluetooth so Linux uses the patched driver.
-- Helps verify Realtek firmware loading.
-- Includes helpers for pairing, reconnecting, autosuspend, diagnostics, and agent-driven install/repair.
-
-This is not an official Mercusys, Realtek, or Linux kernel project. It is a community driver fix and operational toolkit.
-
-## Who This Is For
-
-Use this if you have a Mercusys MA530 Bluetooth adapter on Ubuntu or an Ubuntu-based Linux distribution and you see symptoms like:
-
-- the adapter appears in `lsusb`, but Bluetooth is unreliable;
-- Bluetooth scanning or pairing fails;
-- a keyboard or mouse pairs once and then stops reconnecting;
-- kernel logs mention Realtek Bluetooth firmware, but the controller is unstable;
-- you want a reproducible way to rebuild the fix after kernel updates.
-
-The target adapter is:
+## Supported Hardware
 
 ```text
+Product: Mercusys MA530 Bluetooth Nano USB Adapter
 USB ID: 2c4e:0115
 Chip family: Realtek RTL8761BU / RTL8761BUV
 Linux driver path: btusb + btrtl
+Firmware path: /lib/firmware/rtl_bt/
+Expected firmware: rtl8761bu_fw.bin, optionally rtl8761bu_config.bin
 ```
+
+Firmware blobs are not included. Install them from your Linux distribution, usually through `linux-firmware`.
+
+## What This Repository Provides
+
+- Minimal `btusb` patch: [patches/btusb-ma530-minimal.patch](patches/btusb-ma530-minimal.patch)
+- Compatibility fallback patch: [patches/btusb-ma530.patch](patches/btusb-ma530.patch)
+- Source bootstrap and idempotent patch preparation
+- Manual build/install/load flow for `/lib/modules/<kernel>/updates/`
+- Optional DKMS workflow for rebuilds after kernel updates
+- Verification, rollback, Secure Boot notes, and sanitized diagnostics
+- Pairing/autoconnect helpers that run only after driver/controller verification in the main installer
 
 ## Quick Install
 
-Clone the repository, plug in the adapter, then run:
+Recommended DKMS path:
+
+```bash
+MA530_USE_DKMS=1 ./scripts/agent_install.sh
+```
+
+Manual module path:
+
+```bash
+MA530_USE_DKMS=0 ./scripts/agent_install.sh
+```
+
+The default entrypoint remains:
 
 ```bash
 ./scripts/agent_install.sh
 ```
 
-That script tries to install dependencies, prepare the driver source, apply the patch, build the module, install it, reload `btusb`, and print verification output.
-
-For a manual install path, see [docs/install.md](docs/install.md).
-
-## For Coding Agents
-
-This repo is intentionally agent-operable. If you ask a coding agent to "implement the patch", it should start from [AGENTS.md](AGENTS.md) and use:
+## Verify
 
 ```bash
-./scripts/agent_install.sh
+./scripts/verify_driver.sh
+echo $?
 ```
 
-The agent is allowed to improve the local automation if the host environment differs. The goal is a working MA530 driver install, not blind adherence to one exact script path.
+Return codes:
 
-## After Kernel Updates
+```text
+0 = driver active and coherent
+1 = module missing or kernel mismatch
+2 = MA530 hardware absent
+3 = module present, but Bluetooth controller absent
+```
 
-Kernel updates require rebuilding the module:
+## Rollback
 
 ```bash
-./scripts/build_driver.sh
-./scripts/install_driver.sh
-./scripts/load_driver.sh
+./scripts/uninstall_driver.sh
+modinfo -n btusb || true
 ```
 
-Then confirm:
+Rollback removes only modules installed under `/lib/modules/<kernel>/updates/`. It does not remove firmware, packages, Bluetooth configuration, or pairing databases.
+
+## Secure Boot
+
+Secure Boot may block unsigned local kernel modules. The installer detects Secure Boot with `mokutil` when available and prints a warning, but it does not create or enroll MOK keys automatically. See [docs/secure-boot.md](docs/secure-boot.md).
+
+## Diagnostics
 
 ```bash
-modinfo -n btusb
-sudo dmesg | rg -i 'MA530|RTL|btusb'
+./scripts/collect_diagnostics.sh
 ```
 
-## What Is In The Repo
+The diagnostics file is written under `logs/` and sanitized by [scripts/sanitize_logs.py](scripts/sanitize_logs.py) to mask Bluetooth MAC addresses, `/home/<user>` paths, local hostnames, and serial numbers.
 
-- [patches/btusb-ma530.patch](patches/btusb-ma530.patch): the MA530 `btusb` patch.
-- [scripts/](scripts/): install, build, load, pairing, recovery, and diagnostics helpers.
-- [AGENTS.md](AGENTS.md): instructions for autonomous coding agents.
-- [docs/install.md](docs/install.md): detailed install and troubleshooting guide.
-- [docs/repository.md](docs/repository.md): repo metadata, topics, and search keywords.
-- [docs/vendor-support.md](docs/vendor-support.md): official support references and context.
-- [notes/](notes/): development notes and operational runbooks.
+Do not publish unsanitized logs, firmware blobs, `.ko` files, build outputs, Bluetooth MAC addresses, hostnames, serial numbers, tokens, private keys, or credentials.
 
-## What Is Not Included
+## Documentation
 
-This repo does not include proprietary Realtek firmware blobs or generated kernel modules. Firmware should come from your Linux distribution under `/lib/firmware/rtl_bt/`.
-
-Build outputs, logs, firmware, and local captures are intentionally ignored.
-
-## Safety
-
-Before sharing logs, remove Bluetooth MAC addresses, hostnames, usernames, and personal device names. See [SECURITY.md](SECURITY.md).
+For the full workflow, see [docs/install.md](docs/install.md). Coding agents should also read [AGENTS.md](AGENTS.md).
 
 ## License
 
