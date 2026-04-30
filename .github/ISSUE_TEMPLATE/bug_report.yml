@@ -1,0 +1,57 @@
+name: Bluetooth adapter issue
+description: Report a Mercusys MA530 Linux driver, pairing, or reconnect problem
+title: "[MA530] "
+labels: ["bug", "bluetooth"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before posting, remove personal Bluetooth MAC addresses, hostnames, serial numbers, and private logs.
+  - type: input
+    id: distro
+    attributes:
+      label: Linux distribution
+      placeholder: "Ubuntu 24.04, Kubuntu 24.04, Linux Mint ..."
+    validations:
+      required: true
+  - type: input
+    id: kernel
+    attributes:
+      label: Kernel version
+      placeholder: "Output of: uname -r"
+    validations:
+      required: true
+  - type: textarea
+    id: driver_integrity
+    attributes:
+      label: Driver integrity checks
+      description: Paste sanitized output.
+      value: |
+        modinfo -n btusb
+        modinfo /lib/modules/$(uname -r)/updates/btusb.ko | rg -n 'srcversion|vermagic|version'
+        lsmod | rg -n '^btusb|^btrtl|^bluetooth'
+    validations:
+      required: true
+  - type: textarea
+    id: adapter_state
+    attributes:
+      label: Adapter/controller checks
+      value: |
+        lsusb | rg -i '2c4e:0115|mercusys'
+        hciconfig -a
+        bluetoothctl show
+    validations:
+      required: true
+  - type: textarea
+    id: symptoms
+    attributes:
+      label: What happens?
+      description: Describe scanning, pairing, connecting, reconnecting, or firmware-load behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant sanitized logs
+      description: dmesg/journal snippets are useful. Remove MAC addresses and device names if private.
+      render: text

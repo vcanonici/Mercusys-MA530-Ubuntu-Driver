@@ -1,0 +1,21 @@
+# build artifacts
+*.o
+*.ko
+*.mod
+*.mod.c
+*.cmd
+*.symvers
+*.order
+Module.symvers
+modules.order
+
+# workspace
+/logs/
+/driver/build/
+/firmware/
+*.btsnoop
+*.log
+
+# editor
+*.swp
+.DS_Store
