@@ -1,0 +1,65 @@
+#cloud-config
+autoinstall:
+  version: 1
+  refresh-installer:
+    update: false
+  interactive-sections:
+    - network
+    - storage
+    - identity
+  locale: en_US.UTF-8
+  keyboard:
+    layout: br
+    variant: abnt2
+  source:
+    id: ubuntu-desktop
+    search_drivers: true
+  timezone: Europe/Lisbon
+  ssh:
+    install-server: true
+    allow-pw: true
+  codecs:
+    install: true
+  drivers:
+    install: true
+  updates: security
+  packages:
+    - curl
+    - ca-certificates
+    - openssh-server
+  user-data:
+    write_files:
+      - path: /etc/systemd/system/vinicius-postinstall.service
+        permissions: '0644'
+        content: |
+          [Unit]
+          Description=Provisionamento da workstation Vinicius
+          Wants=network-online.target
+          After=network-online.target
+          ConditionPathExists=!/var/lib/vinicius-postinstall.done
+
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/local/sbin/vinicius-postinstall-launcher
+          Restart=on-failure
+          RestartSec=60
+          TimeoutStartSec=0
+
+          [Install]
+          WantedBy=multi-user.target
+      - path: /usr/local/sbin/vinicius-postinstall-launcher
+        permissions: '0755'
+        content: |
+          #!/usr/bin/env bash
+          set -Eeuo pipefail
+          URL='https://raw.githubusercontent.com/vcanonici/Mercusys-MA530-Ubuntu-Driver/main/nocloud/postinstall.sh'
+          DEST='/usr/local/sbin/vinicius-postinstall'
+          curl --fail --location --retry 6 --retry-all-errors --retry-delay 10 "$URL" -o "$DEST.tmp"
+          install -m 0755 "$DEST.tmp" "$DEST"
+          rm -f "$DEST.tmp"
+          exec "$DEST"
+    runcmd:
+      - [systemctl, daemon-reload]
+      - [systemctl, enable, vinicius-postinstall.service]
+      - [systemctl, start, --no-block, vinicius-postinstall.service]
+  shutdown: reboot
